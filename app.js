@@ -92,18 +92,68 @@ function resultView(){
 }
 
 function sourceView(){
- const supported='showDirectoryPicker' in window;
- return `<div class="topbar"><div class="brand">QUESTION BANK</div><button class="iconbtn" onclick="state.screen='home';render()">Back</button></div>
- <div class="card">
-   <h2>Connect your Question-Bank folder</h2>
-   <p class="muted">Your setup is:</p><div class="notice small"><b>Trivia App / Question-Bank</b><br>Each CSV file becomes one quiz. The filename is the quiz name.</div>
-   ${supported?`<button class="btn" onclick="connectFolder()">SELECT QUESTION-BANK FOLDER</button>`:`<div class="notice warning small">This browser does not support folder access. Use Chrome or Edge on Windows for the connected Question-Bank workflow.</div>`}
-   <button class="btn secondary" onclick="importFiles()">IMPORT CSV FILES MANUALLY</button>
-   <input id="manualFiles" class="hidden" type="file" accept=".csv,text/csv" multiple onchange="importSelectedFiles()">
- </div>
- <div class="card"><h3>Current quiz sets</h3>${sets().map(s=>`<div class="row review"><span><b>${esc(s)}</b></span><span class="pill">${countSet(s)}</span></div>`).join('')||'<div class="muted">None</div>'}</div>
- <div class="footer-note">Tip: keep your CSV files in OneDrive so the Question-Bank folder stays backed up.</div>`
+  const supported='showDirectoryPicker' in window;
+  return `<div class="topbar"><div class="brand">QUESTION BANK</div><button class="iconbtn" onclick="state.screen='home';render()">Back</button></div>
+  <div class="card">
+    <h2>Connect your Question-Bank</h2>
+    <p class="muted">Choose how you want to load your quiz sets.</p>
+
+    <button class="btn" onclick="loadGitHubBank()">LOAD GITHUB QUESTION BANK</button>
+
+    ${supported ? `<button class="btn secondary" onclick="connectFolder()">SELECT QUESTION-BANK FOLDER</button>` : ''}
+
+    <button class="btn secondary" onclick="importFiles()">IMPORT CSV FILES MANUALLY</button>
+    <input id="manualFiles" class="hidden" type="file" accept=".csv,text/csv" multiple onchange="importSelectedFiles()">
+
+    <div class="notice small">
+      <b>Phone:</b> use LOAD GITHUB QUESTION BANK.<br>
+      <b>Desktop:</b> you can also select your local Question-Bank folder.
+    </div>
+  </div>
+
+  <div class="card"><h3>Current quiz sets</h3>${sets().map(s=>`<div class="row review"><span><b>${esc(s)}</b></span><span class="pill">${countSet(s)} questions</span></div>`).join('')}</div>
+  <div class="footer-note">Your GitHub question bank is built into the app and can be used from your phone.</div>`
 }
+async function loadGitHubBank(){
+  try{
+    const names=[
+      'Horror Movie Release Dates.csv',
+      'Slasher trivia.csv',
+      'Horror Movie Deep Cuts.csv',
+      'Horror Movie Cult clasics.csv',
+      '80s Horror Movies.csv',
+      '90s Horror Movies.csv',
+      '2000s Horror Movies.csv',
+      '2010s Horror Movies.csv',
+      '2020s Horror Movies.csv',
+      'Horror Franchises.csv',
+      'Super Hard Horror Trivia.csv'
+    ];
+
+    const files=[];
+
+    for(const name of names){
+      const url=`Question-Bank/${encodeURIComponent(name)}`;
+      const response=await fetch(url);
+
+      if(!response.ok) throw new Error(`Could not load ${name}`);
+
+      const text=await response.text();
+      files.push(new File([text],name,{type:'text/csv'}));
+    }
+
+    await importFileObjects(files,false);
+    source='github';
+    state.screen='home';
+    render();
+
+    alert(`Loaded ${files.length} quiz sets from GitHub.`);
+  }catch(e){
+    console.error(e);
+    alert('Could not load the GitHub Question Bank. Please check your internet connection and try again.');
+  }
+}
+
 async function connectFolder(){
  try{
    const dir=await window.showDirectoryPicker({mode:'read'});
