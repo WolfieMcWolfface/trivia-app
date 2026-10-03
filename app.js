@@ -127,7 +127,11 @@ async function loadGitHubBank(){
       '2010s Horror Movies.csv',
       '2020s Horror Movies.csv',
       'Horror Franchises.csv',
-      'Super Hard Horror Trivia.csv'
+      'Super Hard Horror Trivia.csv',
+      'Scary Toys.csv',
+      'Reader Digest.csv',
+      'Random Mix.csv',
+      'Tag Lines.csv'
     ];
 
     const files=[];
