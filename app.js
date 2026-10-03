@@ -7,7 +7,7 @@ const SAMPLE=[
 ];
 let bank=load();
 let source='local';
-let state={screen:'home',set:null,count:10,standard:70,questions:[],i:0,score:0,answers:[],directoryName:'',review:null};
+let state={screen:'home',set:null,count:10,standard:70,mode:'fixed',questions:[],i:0,score:0,answers:[],directoryName:'',review:null};
 
 function load(){try{const x=JSON.parse(localStorage.getItem(STORAGE));return Array.isArray(x)&&x.length?x:sampleRows()}catch{return sampleRows()}}
 function sampleRows(){return SAMPLE.map((q,i)=>({...q,set:'Sample_Set',id:'sample-'+i}))}
@@ -21,34 +21,121 @@ function render(){document.querySelector('#app').innerHTML=`<div class="wrap">${
 function view(){if(state.screen==='quiz')return quizView();if(state.screen==='result')return resultView();if(state.screen==='source')return sourceView();return homeView()}
 
 function homeView(){
- const ss=sets();
- const max=state.set?countSet(state.set):1;
- if(state.set)state.count=Math.min(Math.max(1,state.count),max);
- return `<div class="topbar"><div class="brand">MY QUIZ</div><button class="iconbtn" onclick="state.screen='source';render()">Question Bank</button></div>
- <div class="card">
-   <div class="row"><div><h2>Choose a quiz</h2><div class="muted">${bank.length} questions loaded${state.directoryName?` · ${esc(state.directoryName)}`:''}</div></div></div>
-   ${ss.length?`<div class="grid" style="margin-top:16px">${ss.map(s=>`<button class="set ${state.set===s?'selected':''}" onclick='chooseSet(${JSON.stringify(s)})'><div class="row"><span class="name">${esc(s)}</span><span class="pill">${countSet(s)}</span></div></button>`).join('')}</div>`:'<div class="set-empty">No quiz sets loaded yet.</div>'}
- </div>
- <div class="card">
-   <h2>Quiz settings</h2>
-   <div class="settings-row"><div class="row"><span>Questions</span><b>${state.count}</b></div><input class="slider" type="range" min="1" max="${max}" value="${state.count}" oninput="state.count=+this.value;render()"></div>
-   <div class="settings-row"><div class="row"><span class="ratio-label">Standard</span><b>${state.standard}%</b></div><input class="slider" type="range" min="0" max="100" step="10" value="${state.standard}" oninput="state.standard=+this.value;render()"><div class="row muted small"><span>Multiple choice</span><span>Hard: ${100-state.standard}%</span></div></div>
-   <div class="notice small">Hard uses the same question but hides A–D. You type the answer instead.</div>
-   <button type="button" class="btn" onclick="startQuiz()" ${state.set && countSet(state.set)>0?'':'disabled'}>START QUIZ</button>
- </div>`
+  const ss=sets();
+  const max=state.set?countSet(state.set):1;
+  if(state.set)state.count=Math.min(Math.max(1,state.count),max);
+
+  return `<div class="topbar"><div class="brand">MY QUIZ</div><button class="iconbtn" onclick="state.screen='source';render()">Question Bank</button></div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <h2>Choose a quiz</h2>
+        <div class="muted">${bank.length} questions loaded${state.directoryName?` · ${esc(state.directoryName)}`:''}</div>
+      </div>
+    </div>
+
+    ${ss.length?`<div class="grid" style="margin-top:16px">${ss.map(s=>`<button class="set ${state.set===s?'selected':''}" onclick='chooseSet(${JSON.stringify(s)})'>${esc(s)}<span class="muted">${countSet(s)} questions</span></button>`).join('')}</div>`:'<div class="notice">No quiz sets loaded yet.</div>'}
+  </div>
+
+  <div class="card">
+    <h2>Quiz settings</h2>
+
+    <div class="settings-row">
+      <div class="row">
+        <span>Questions</span>
+        <b>${state.count}</b>
+      </div>
+      <input class="slider" type="range" min="1" max="${max}" value="${state.count}" oninput="state.count=Number(this.value);render()">
+    </div>
+
+    <div class="settings-row">
+      <div class="row">
+        <span>Mode</span>
+        <b>${state.mode==='adaptive'?'Adaptive':'Standard / Hard'}</b>
+      </div>
+      <select class="select" onchange="state.mode=this.value;render()">
+        <option value="fixed" ${state.mode==='fixed'?'selected':''}>Standard / Hard percentage</option>
+        <option value="adaptive" ${state.mode==='adaptive'?'selected':''}>Adaptive difficulty</option>
+      </select>
+    </div>
+
+    ${state.mode==='fixed'?`
+    <div class="settings-row">
+      <div class="row">
+        <span class="ratio-label">Standard</span>
+        <b>${state.standard}%</b>
+      </div>
+      <input class="slider" type="range" min="0" max="100" value="${state.standard}" oninput="state.standard=Number(this.value);render()">
+      <div class="muted small">Hard: ${100-state.standard}%</div>
+    </div>
+    `:`
+    <div class="notice small">
+      <b>Adaptive difficulty:</b> Answer a Standard question correctly and it becomes Hard next time. A Hard question stays Hard when correct, but drops to Standard when you get it wrong.
+    </div>
+    `}
+
+    <div class="notice small">Hard uses the same question but hides A-D. You type the answer instead.</div>
+
+    <button type="button" class="btn" onclick="startQuiz()" ${state.set&&countSet(state.set)>0?'':'disabled'}>START QUIZ</button>
+  </div>
+  `
 }
 function chooseSet(s){state.set=String(s);const n=countSet(state.set);state.count=Math.max(1,Math.min(state.count||1,n));render()}
 
+const PROGRESS_STORAGE='myQuizV4Progress';
+
+function loadProgress(){
+  try{
+    return JSON.parse(localStorage.getItem(PROGRESS_STORAGE)||'{}');
+  }catch(e){
+    return {};
+  }
+}
+
+function saveProgress(progress){
+  localStorage.setItem(PROGRESS_STORAGE,JSON.stringify(progress));
+}
+
+function questionKey(q){
+  return `${q.set}|${q.question}`;
+}
+
 async function startQuiz(){
- if(!state.set){alert('Please select a quiz set first.');return}
- const pool=shuffle(setQuestions(state.set));
- if(!pool.length)return;
- const total=Math.min(state.count,pool.length);
- const selected=pool.slice(0,total);
- const hard=Math.round(total*(100-state.standard)/100);
- const hardIdx=new Set(shuffle([...Array(total).keys()]).slice(0,hard));
- state.questions=selected.map((q,i)=>({...q,mode:hardIdx.has(i)?'hard':'standard'}));
- state.i=0;state.score=0;state.answers=[];state.review=null;state.screen='quiz';render();
+  if(!state.set){
+    alert('Please select a quiz set first.');
+    return;
+  }
+
+  const pool=shuffle(setQuestions(state.set));
+  if(!pool.length)return;
+
+  const total=Math.min(state.count,pool.length);
+  const selected=pool.slice(0,total);
+
+  if(state.mode==='adaptive'){
+    const progress=loadProgress();
+
+    state.questions=selected.map(q=>({
+      ...q,
+      mode:progress[questionKey(q)]||'standard'
+    }));
+  }else{
+    const hard=Math.round(total*(100-state.standard)/100);
+    const hardIdx=new Set(shuffle([...Array(total).keys()]).slice(0,hard));
+
+    state.questions=selected.map((q,i)=>({
+      ...q,
+      mode:hardIdx.has(i)?'hard':'standard'
+    }));
+  }
+
+  state.i=0;
+  state.score=0;
+  state.answers=[];
+  state.review=null;
+  state.screen='quiz';
+  render();
 }
 function quizView(){
  const q=state.questions[state.i];
@@ -66,14 +153,35 @@ function hardQuestion(q){return `<div class="hard-note"><b>Hard mode</b><br><spa
 function submitTyped(){const el=document.querySelector('#typed');if(el&&el.value.trim())answer(el.value)}
 function normal(s){return String(s??'').trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,"'").replace(/[.,!?;:()[\]{}"]+/g,'').replace(/\s+/g,' ')}
 function answer(val){
- if(state.review)return;
- const q=state.questions[state.i];
- const correctText=q[q.correct.toLowerCase()];
- const ok=q.mode==='standard'?String(val).toUpperCase()===q.correct:normal(val)===normal(correctText);
- if(ok)state.score++;
- state.answers.push({q,ok,given:val});
- state.review={ok,given:val};
- render();
+  if(state.review)return;
+
+  const q=state.questions[state.i];
+  const correctText=q[q.correct.toLowerCase()];
+
+  const ok=q.mode==='standard'
+    ? String(val).toUpperCase()===q.correct
+    : normal(val)===normal(correctText);
+
+  if(ok)state.score++;
+
+  if(state.mode==='adaptive'){
+    const progress=loadProgress();
+    const key=questionKey(q);
+
+    if(q.mode==='standard' && ok){
+      progress[key]='hard';
+    }else if(q.mode==='hard' && !ok){
+      progress[key]='standard';
+    }else{
+      progress[key]=q.mode;
+    }
+
+    saveProgress(progress);
+  }
+
+  state.answers.push({q,ok,given:val});
+  state.review={ok,given:val};
+  render();
 }
 function reviewView(q){
  const r=state.review;
